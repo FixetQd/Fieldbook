@@ -594,11 +594,15 @@ button.chip:hover { border-color: var(--fg-3); color: var(--fg); }
 .dialog hr { border: 0; border-top: 1px solid var(--line); margin: 18px 0 4px; }
 .form-err { color: var(--late); font-size: 13px; min-height: 18px; }
 
+.bulk { margin: 8px 0 0 26px; padding: 12px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--surface); display: grid; gap: 8px; }
+.bulk textarea { font-family: var(--f-ui); line-height: 1.6; min-height: 140px; }
+.bulk-foot { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
 </style>
 </head><body>
 <div class="app">
   <aside class="side" aria-label="Sidebar">
-    <div class="brand"><b>Fieldbook</b></div>
+    <div class="brand"><b>Fieldbook</b><span class="ws"></span></div>
     <button class="capture-btn" data-act="capture"><svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>Capture<kbd>C</kbd></button>
     <nav class="nav" aria-label="Main">
       <button class="nav-item" data-nav="home" data-act="go" data-to="home"><svg class="ico" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 11l8-7 8 7M6 9.5V20h12V9.5"/></svg>Dashboard</button>
@@ -614,7 +618,7 @@ button.chip:hover { border-color: var(--fg-3); color: var(--fg); }
     </div>
   </aside>
   <header class="topbar">
-    <div class="brand"><b>Fieldbook</b></div>
+    <div class="brand"><b>Fieldbook</b><span class="ws"></span></div>
     <button class="icon-btn" data-act="search" aria-label="Search"><svg class="ico" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4 4"/></svg></button>
     <button class="icon-btn" data-act="open-settings" aria-label="Settings"><svg class="ico" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21M5.6 5.6l1.8 1.8M16.6 16.6l1.8 1.8M5.6 18.4l1.8-1.8M16.6 7.4l1.8-1.8"/></svg></button>
   </header>
@@ -872,7 +876,8 @@ function redo() {
 function touch(p) { p.updatedAt = Date.now(); }
 
 /* ===================== persistence ===================== */
-const LS_KEY = 'fieldbook.v1', LS_THEME = 'fieldbook.theme';
+const NS = (() => { try { return location.pathname.replace(/index\.html$/, '').replace(/\/+$/, '') || '/'; } catch (e) { return '/'; } })();
+const LS_KEY = 'fieldbook.v1@' + NS, LS_THEME = 'fieldbook.theme';
 const Sync = { cfg: null, busy: false, again: false, timer: null, state: 'idle', last: 0, msg: '' };
 const Store = { mode: 'local', base: null, metaRef: null, persisted: new Map(), flushing: false, again: false, timer: null, status: 'saved', lsOk: true, dbFail: false };
 
@@ -1267,8 +1272,12 @@ function viewProject(id) {
     <div class="steps" data-steps="${p.id}">
       ${top.length ? top.map(s => stepRow(p, s, 0, q)).join('') : (p.steps.length ? `<div class="steps-empty">${q ? 'No steps match that filter.' : 'Everything here is done and hidden.'}</div>` : `<div class="steps-empty">Break it down into small, concrete steps. Press Enter after each one to add the next.</div>`)}
     </div>
-    ${addStepRow('data-add-step', p.id, p.steps.length ? 'Add a step' : 'Add the first step')}
-    <p class="hint" style="margin-top:6px">Enter adds a step · Tab nests it · Shift+Tab moves it back out · Alt+↑/↓ reorders · paste a list to add many</p>`;
+    ${UI.bulk === p.id ? `<div class="bulk"><label class="lab" for="bulk-text">One step per line. Indent a line to make it a subtask.</label>
+      <textarea class="field" id="bulk-text" data-draft="bulk:${p.id}" rows="7" placeholder="Read the manual&#10;Order parts&#10;  Motor&#10;  Controller&#10;Test it" spellcheck="true">${draft('bulk:' + p.id)}</textarea>
+      <div class="bulk-foot"><span class="hint" id="bulk-count">${parseOutline(UI.drafts['bulk:' + p.id] || '').length} steps</span><span style="flex:1"></span>
+      <button class="btn sm quiet" data-act="bulk-cancel">Cancel</button><button class="btn sm primary" data-act="bulk-add">Add steps <kbd style="color:inherit;border-color:transparent;background:rgba(0,0,0,.14)">Ctrl ↵</kbd></button></div></div>`
+      : `${addStepRow('data-add-step', p.id, p.steps.length ? 'Add a step' : 'Add the first step')}<button class="btn sm quiet" data-act="bulk-open" style="margin-left:26px">${ico('plus', 14)} Add many at once</button>`}
+    <p class="hint" style="margin-top:8px">Enter adds a step · Shift+Enter or “Add many” for a whole list · Tab nests it · Alt+↑/↓ reorders</p>`;
 }
 
 /* ===================== inbox ===================== */
@@ -1469,7 +1478,7 @@ function render() {
     else if (ae.dataset.act && ae.dataset.sid) sel = `[data-act="${ae.dataset.act}"][data-sid="${ae.dataset.sid}"]`;
     if (sel) keep = { sel, start: ae.selectionStart, end: ae.selectionEnd };
   }
-  applyTheme(); renderNav();
+  applyTheme(); renderNav(); if (typeof updateBrand === 'function') updateBrand();
   let html;
   if (!UI.booted) html = viewLoading();
   else {
@@ -1510,7 +1519,7 @@ function onRoute() {
   if (key === routeKey) return;
   routeKey = key;
   UI.route = parseRoute(); UI.animate = true; UI.stepQ = ''; UI.ph = Math.floor(Math.random() * PLACEHOLDERS.length);
-  UI.editNote = null; scrollTop0 = true; closePop(); closeModal();
+  UI.editNote = null; UI.bulk = null; scrollTop0 = true; closePop(); closeModal();
   render();
 }
 function go(to) { if (location.hash.slice(1) !== to) location.hash = to; onRoute(); }
@@ -1621,6 +1630,17 @@ function parseOutline(text) {
     const title = l.trim().replace(/^([-*•]|\d+[.)]|\[[ xX]?\])\s+/, '').replace(/^\[[ xX]?\]\s*/, '');
     return { title, depth: levels.length - 1 };
   }).filter(i => i.title);
+}
+function bulkAdd() {
+  const pid = UI.route.id, key = 'bulk:' + pid;
+  const ta = $('#bulk-text'); const text = ta ? ta.value : (UI.drafts[key] || '');
+  const items = parseOutline(text);
+  if (!items.length) { if (ta) ta.focus(); return; }
+  UI.drafts[key] = ''; UI.bulk = null;
+  const parent = (UI.addTo && UI.addTo.pid === pid && S.projects[pid] && findIn(S.projects[pid].steps, UI.addTo.parent)) ? UI.addTo.parent : null;
+  const ids = addSteps(pid, parent, items);
+  setFocus(`[data-add-step="${pid}"]`); render();
+  toast(`Added ${plural(ids.length, 'step', 'steps')}`, { undo: true });
 }
 function indentStep(sid) {
   const r = locate(sid); if (!r || r.idx === 0) return false;
@@ -1897,6 +1917,9 @@ const A = {
     openPop(el, ['active', 'paused', 'completed', 'archived'].map(s => ({ label: STATUS_LABEL[s] + (p.status === s ? '  ✓' : ''), fn: () => { if (p.status !== s) setProjectStatus(p, s); } })));
   },
   'proj-status': el => { const p = S.projects[UI.route.id]; if (p) setProjectStatus(p, el.dataset.v); },
+  'bulk-open': () => { UI.bulk = UI.route.id; setFocus('#bulk-text'); render(); },
+  'bulk-cancel': () => { UI.bulk = null; UI.drafts['bulk:' + UI.route.id] = ''; render(); },
+  'bulk-add': () => bulkAdd(),
   'dismiss-ready': () => { UI.dismissed.add(UI.route.id); render(); },
   restore: el => { const p = S.projects[el.dataset.id]; if (p) setProjectStatus(p, p.archivedFrom || 'active'); },
   'delete-project': el => deleteProject(el.dataset.id),
@@ -2000,6 +2023,7 @@ document.addEventListener('input', e => {
   const t = e.target;
   if (t.dataset && t.dataset.draft) UI.drafts[t.dataset.draft] = t.value;
   if (t.tagName === 'TEXTAREA' && (t.classList.contains('stitle') || t.classList.contains('p-title') || t.classList.contains('p-desc') || t.closest('.composer'))) autosize(t);
+  if (t.id === 'bulk-text') { const c = $('#bulk-count'); if (c) c.textContent = plural(parseOutline(t.value).length, 'step', 'steps'); }
   if (t.id === 'pq') { UI.pq = t.value; render(); }
   else if (t.id === 'iq') { UI.inboxQ = t.value; render(); }
   else if (t.id === 'stepq') { UI.stepQ = t.value; render(); }
@@ -2107,6 +2131,11 @@ function onTitleKey(e, t) {
 }
 function onAddStepKey(e, t) {
   const pid = t.dataset.addStep, p = S.projects[pid]; if (!p) return;
+  if (e.key === 'Enter' && e.shiftKey && !e.isComposing) {
+    e.preventDefault();
+    UI.drafts['bulk:' + pid] = (t.value ? t.value + '\n' : ''); UI.drafts['add:' + pid] = ''; UI.bulk = pid;
+    setFocus('#bulk-text', 9999, 9999); render(); return;
+  }
   if (e.key === 'Enter' && !e.isComposing) {
     e.preventDefault();
     const v = t.value.trim(); if (!v) return;
@@ -2147,6 +2176,17 @@ document.addEventListener('keydown', e => {
   if (t.id === 'note-edit') {
     if (e.key === 'Escape') { UI.editNote = null; render(); return; }
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); t.blur(); return; }
+  }
+  if (t.id === 'bulk-text') {
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); bulkAdd(); return; }
+    if (e.key === 'Tab') {
+      e.preventDefault(); const s = t.selectionStart, en = t.selectionEnd;
+      if (e.shiftKey) { const ls = t.value.lastIndexOf('\n', s - 1) + 1; if (t.value.slice(ls, ls + 2) === '  ') { t.value = t.value.slice(0, ls) + t.value.slice(ls + 2); t.setSelectionRange(Math.max(ls, s - 2), Math.max(ls, en - 2)); } }
+      else { t.value = t.value.slice(0, s) + '  ' + t.value.slice(en); t.setSelectionRange(s + 2, s + 2); }
+      UI.drafts['bulk:' + UI.route.id] = t.value; t.dispatchEvent(new Event('input', { bubbles: true })); return;
+    }
+    if (e.key === 'Escape') { t.blur(); return; }
+    return;
   }
   if (t.id === 'inbox-text' && e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); t.form.requestSubmit(); return; }
   if (t.id === 'cm-text' && e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); t.form.requestSubmit(); return; }
@@ -2249,19 +2289,40 @@ setInterval(() => { if (UI.booted && UI.stamp && UI.stamp !== today()) { UI.stam
 if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => autosizeAll());
 
 (async function boot() {
+  await Promise.resolve(); // let every module finish defining before starting
   const th = themeRead(); document.documentElement.dataset.theme = th === 'light' ? 'light' : 'dark';
   UI.ph = Math.floor(Math.random() * PLACEHOLDERS.length);
   routeKey = location.hash.slice(1) || 'home'; UI.route = parseRoute();
+  const legacy = typeof legacyCheck === 'function' ? legacyCheck() : null;
   render();
   await loadAll();
   UI.booted = true; UI.stamp = today(); UI.animate = true;
   setStatus('saved'); render();
   if (typeof initSync === 'function') initSync();
+  if (legacy === 'ask') legacyPrompt();
   if (window.__FB_TEST) window.__fieldbook = { S, UI, Store, commit, go, undo, redo, toast };
 })();
 
 /* ===================== github sync ===================== */
-const SYNC_KEY = 'fieldbook.sync', BASE_KEY = 'fieldbook.syncbase';
+const SYNC_KEY = 'fieldbook.sync@' + NS, BASE_KEY = 'fieldbook.syncbase@' + NS, ASKED_KEY = 'fieldbook.declined@' + NS;
+const LEGACY = [['fieldbook.v1', LS_KEY], ['fieldbook.sync', SYNC_KEY], ['fieldbook.syncbase', BASE_KEY]];
+const lsHas = k => { try { return localStorage.getItem(k) != null; } catch (e) { return false; } };
+const legacyPresent = () => LEGACY.some(([o]) => lsHas(o));
+const nsPresent = () => LEGACY.some(([, n]) => lsHas(n));
+function adoptLegacy() { try { LEGACY.forEach(([o, n]) => { const v = localStorage.getItem(o); if (v != null) { localStorage.setItem(n, v); localStorage.removeItem(o); } }); } catch (e) {} }
+function legacyCheck() {
+  if (!legacyPresent() || nsPresent()) return;
+  if (!syncAvailable()) { adoptLegacy(); return 'adopted'; }
+  if (lsHas(ASKED_KEY)) return;
+  return 'ask';
+}
+function legacyPrompt() {
+  openModal(`<h2>Data from an earlier version</h2><p>This site already holds Fieldbook data saved on this device before workspaces were separated. Is this the app that data belongs to?</p>
+    <p class="hint" style="margin-top:8px">Choose No for a different app, such as a team workspace. Its data and sync settings stay untouched for the app they belong to.</p>
+    <div class="actions"><button class="btn" data-act="legacy-no">No, this is a different app</button><button class="btn primary" data-act="legacy-yes">Yes, import it here</button></div>`, '', 'legacy');
+}
+A['legacy-yes'] = () => { adoptLegacy(); location.reload(); };
+A['legacy-no'] = () => { try { localStorage.setItem(ASKED_KEY, '1'); } catch (e) {} closeModal(); };
 const syncAvailable = () => !(window.claude && typeof window.claude.use === 'function');
 function loadCfg() { try { const c = JSON.parse(localStorage.getItem(SYNC_KEY) || 'null'); return c && c.repo && c.token ? c : null; } catch (e) { return null; } }
 function saveCfg(c) {
@@ -2332,7 +2393,8 @@ const canonMap = (kind, map) => Object.fromEntries(Object.entries(map).map(([k, 
 const sameCanon = (a, b) => { const ka = Object.keys(a), kb = Object.keys(b); return ka.length === kb.length && ka.every(k => a[k] === b[k]); };
 const editingNow = () => { const a = document.activeElement; return a && $('#view') && $('#view').contains(a) && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) && a.id !== 'cap'; };
 
-function setSync(state, msg = '') { Sync.state = state; Sync.msg = msg; if (state === 'ok') Sync.last = Date.now(); setStatus(Store.status === 'error' ? 'error' : 'saved'); }
+function setSync(state, msg = '') {
+  updateBrand(); Sync.state = state; Sync.msg = msg; if (state === 'ok') Sync.last = Date.now(); setStatus(Store.status === 'error' ? 'error' : 'saved'); }
 function scheduleSync(delay = 2500) { clearTimeout(Sync.timer); Sync.timer = setTimeout(syncNow, delay); }
 
 async function syncNow() {
@@ -2475,6 +2537,11 @@ function initSync() {
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && Sync.cfg) syncNow(); });
   window.addEventListener('online', () => { if (Sync.cfg) syncNow(); });
   window.addEventListener('focusout', () => { if (Sync.cfg && Sync.again) scheduleSync(1000); });
+}
+
+function updateBrand() {
+  const name = Sync.cfg ? Sync.cfg.repo.split('/')[1] || '' : '';
+  $$('.brand .ws').forEach(e => { e.textContent = name; });
 }
 
 })();
