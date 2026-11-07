@@ -1,5 +1,10 @@
-<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
-<meta name="claude:viewport-fit-sides" content="cover">
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Fieldbook"><meta name="theme-color" content="#0e1013">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230e1013'/%3E%3Cpath d='M10 8h12v16H10z' fill='none' stroke='%23d9a86c' stroke-width='2'/%3E%3C/svg%3E">
+<style>:root{padding:env(safe-area-inset-top,0px) 0 env(safe-area-inset-bottom,0px)}body{margin:0}</style>
 <title>Fieldbook</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -111,6 +116,8 @@ a:hover { text-decoration: underline; }
 .capture-btn:hover { filter: brightness(1.06); }
 .capture-btn kbd { margin-left: auto; background: rgba(0, 0, 0, 0.14); color: inherit; border-color: transparent; }
 .side-foot { margin-top: auto; display: flex; flex-direction: column; gap: 2px; }
+.sync { width: 100%; text-align: left; cursor: pointer; border-radius: 6px; }
+.sync:hover { background: var(--surface-2); }
 .sync { display: flex; align-items: center; gap: 8px; padding: 6px 8px; color: var(--fg-3); font-size: 12px; }
 .sync i { width: 6px; height: 6px; border-radius: 50%; background: var(--good); flex: none; }
 .sync[data-s="saving"] i { background: var(--accent); }
@@ -583,7 +590,12 @@ button.chip:hover { border-color: var(--fg-3); color: var(--fg); }
   *, *::before, *::after { animation-duration: 0.001ms !important; transition-duration: 0.001ms !important; }
 }
 
+.steps-help { margin: 12px 0 0; padding-left: 20px; color: var(--fg-2); display: grid; gap: 6px; }
+.dialog hr { border: 0; border-top: 1px solid var(--line); margin: 18px 0 4px; }
+.form-err { color: var(--late); font-size: 13px; min-height: 18px; }
+
 </style>
+</head><body>
 <div class="app">
   <aside class="side" aria-label="Sidebar">
     <div class="brand"><b>Fieldbook</b></div>
@@ -598,7 +610,7 @@ button.chip:hover { border-color: var(--fg-3); color: var(--fg); }
     <div class="side-foot">
       <button class="nav-item" data-act="search"><svg class="ico" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4 4"/></svg>Search<span class="n"><kbd>/</kbd></span></button>
       <button class="nav-item" data-act="open-settings"><svg class="ico" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21M5.6 5.6l1.8 1.8M16.6 16.6l1.8 1.8M5.6 18.4l1.8-1.8M16.6 7.4l1.8-1.8"/></svg>Settings</button>
-      <div class="sync" data-s="saved" role="status"><i></i><span>Saved</span></div>
+      <button class="sync" data-s="saved" data-act="sync-open" aria-label="Sync status"><i></i><span>Saved</span></button>
     </div>
   </aside>
   <header class="topbar">
@@ -708,6 +720,7 @@ const I = {
   upload: '<path d="M12 16V5M7 10l5-5 5 5M5 20h14"/>',
   keys: '<rect x="3" y="6" width="18" height="12" rx="2"/><path d="M7 10h.01M11 10h.01M15 10h.01M7 14h10"/>',
   eye: '<path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
+  sync: '<path d="M4 12a8 8 0 0113.7-5.6L20 9M20 4v5h-5M20 12a8 8 0 01-13.7 5.6L4 15M4 20v-5h5"/>',
   restore: '<path d="M4 4v6h6M4.5 15a8 8 0 100-6"/>'
 };
 const ico = (n, s = 16) => `<svg class="ico" width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${I[n] || ''}</svg>`;
@@ -759,7 +772,8 @@ function cleanNote(x) {
     if (!doodle.length) doodle = null;
   }
   const tags = Array.isArray(x.tags) ? [...new Set(x.tags.map(t => normTag(str(t, 40))).filter(Boolean))].slice(0, 12) : [];
-  return { id: x.id, text: str(x.text, 10000), tags, doodle, createdAt: +x.createdAt || Date.now() };
+  const ca = +x.createdAt || Date.now();
+  return { id: x.id, text: str(x.text, 10000), tags, doodle, createdAt: ca, updatedAt: +x.updatedAt || ca };
 }
 function cleanMeta(x) {
   const m = { focus: [], theme: 'dark' };
@@ -859,6 +873,7 @@ function touch(p) { p.updatedAt = Date.now(); }
 
 /* ===================== persistence ===================== */
 const LS_KEY = 'fieldbook.v1', LS_THEME = 'fieldbook.theme';
+const Sync = { cfg: null, busy: false, again: false, timer: null, state: 'idle', last: 0, msg: '' };
 const Store = { mode: 'local', base: null, metaRef: null, persisted: new Map(), flushing: false, again: false, timer: null, status: 'saved', lsOk: true, dbFail: false };
 
 function exportData() {
@@ -877,11 +892,17 @@ function themeWrite(t) { try { localStorage.setItem(LS_THEME, t); } catch (e) {}
 
 function setStatus(s) {
   Store.status = s;
-  let txt = 'Saved';
+  let txt = 'Saved', st = s;
   if (s === 'saving') txt = 'Saving…';
   else if (s === 'error') txt = Store.msg || 'Not saved. Retry';
-  else if (Store.mode === 'local') txt = Store.lsOk ? 'Saved in this browser' : 'Not saved. Export a backup';
-  $$('.sync').forEach(el => { el.dataset.s = (s === 'saved' && Store.mode === 'local' && !Store.lsOk) ? 'error' : s; const t = el.querySelector('span'); if (t) t.textContent = txt; });
+  else if (Store.mode === 'local') { txt = Store.lsOk ? 'Saved in this browser' : 'Not saved. Export a backup'; if (!Store.lsOk) st = 'error'; }
+  if (Store.mode === 'local' && Sync.cfg && st !== 'error') {
+    if (Sync.state === 'syncing') { txt = 'Syncing…'; st = 'saving'; }
+    else if (Sync.state === 'error') { txt = 'Sync problem. Tap to fix'; st = 'error'; }
+    else if (Sync.state === 'ok') txt = 'Synced ' + ago(Sync.last);
+    else txt = 'Waiting to sync';
+  }
+  $$('.sync').forEach(el => { el.dataset.s = st; const t = el.querySelector('span'); if (t) t.textContent = txt; });
 }
 
 function docsNow() {
@@ -897,6 +918,7 @@ function refFor(d) {
 }
 function schedulePersist() {
   lsWrite();
+  if (Sync.cfg && typeof scheduleSync === 'function') scheduleSync(2500);
   if (Store.mode !== 'db') { setStatus('saved'); return; }
   setStatus('saving');
   clearTimeout(Store.timer);
@@ -1683,7 +1705,7 @@ function addNote(text, tagsExtra = [], doodle = null) {
   const parsed = parseTags(text);
   const tags = [...new Set([...parsed.tags, ...tagsExtra].map(normTag).filter(Boolean))].slice(0, 12);
   if (!parsed.text && !(doodle && doodle.length)) return false;
-  const n = { id: mkid('n'), text: parsed.text, tags, doodle: doodle && doodle.length ? doodle : null, createdAt: Date.now() };
+  const n = { id: mkid('n'), text: parsed.text, tags, doodle: doodle && doodle.length ? doodle : null, createdAt: Date.now(), updatedAt: Date.now() };
   commit(() => { S.notes[n.id] = n; });
   return n;
 }
@@ -1787,6 +1809,7 @@ function settingsPop(anchor) {
     <button class="mi" data-act="export">${ico('download', 15)}<span>Export backup (JSON)</span></button>
     <button class="mi" data-act="import">${ico('upload', 15)}<span>Import from backup</span></button>
     <div class="sep"></div>
+    <button class="mi" data-act="sync-open">${ico('sync', 15)}<span>Sync across devices</span><span class="faint" style="margin-left:auto;font-size:12px">${Sync.cfg ? 'On' : Store.mode === 'db' ? 'Account' : 'Off'}</span></button>
     <button class="mi" data-act="shortcuts">${ico('keys', 15)}<span>Keyboard shortcuts</span><kbd class="k">?</kbd></button>
     <div class="ph" style="line-height:1.4">${Store.mode === 'db' ? 'Your data is stored privately in your Claude account and cached in this browser.' : 'Your data is stored in this browser only. Export a backup now and then.'}</div>`);
 }
@@ -1999,7 +2022,7 @@ document.addEventListener('change', e => {
   else if (f === 'note-edit') { /* handled on blur below */ }
   else if (f === 'note-tag-add') {
     const n = S.notes[t.dataset.id]; const tag = normTag(t.value); t.value = '';
-    if (n && tag && !n.tags.includes(tag) && n.tags.length < 12) commit(() => { n.tags.push(tag); });
+    if (n && tag && !n.tags.includes(tag) && n.tags.length < 12) commit(() => { n.tags.push(tag); n.updatedAt = Date.now(); });
   }
   else if (t.dataset.stepTitle) { /* title uses data-step-title, see below */ }
 });
@@ -2013,7 +2036,7 @@ document.addEventListener('change', e => {
     const n = S.notes[UI.editNote]; if (!n) return;
     const parsed = parseTags(t.value);
     if (!parsed.text && !n.doodle) return;
-    commit(() => { n.text = parsed.text; parsed.tags.forEach(g => { if (!n.tags.includes(g) && n.tags.length < 12) n.tags.push(g); }); }, { render: false });
+    commit(() => { n.text = parsed.text; n.updatedAt = Date.now(); parsed.tags.forEach(g => { if (!n.tags.includes(g) && n.tags.length < 12) n.tags.push(g); }); }, { render: false });
   }
 });
 document.addEventListener('focusout', e => {
@@ -2233,10 +2256,227 @@ if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => auto
   await loadAll();
   UI.booted = true; UI.stamp = today(); UI.animate = true;
   setStatus('saved'); render();
+  if (typeof initSync === 'function') initSync();
   if (window.__FB_TEST) window.__fieldbook = { S, UI, Store, commit, go, undo, redo, toast };
 })();
 
+/* ===================== github sync ===================== */
+const SYNC_KEY = 'fieldbook.sync', BASE_KEY = 'fieldbook.syncbase';
+const syncAvailable = () => !(window.claude && typeof window.claude.use === 'function');
+function loadCfg() { try { const c = JSON.parse(localStorage.getItem(SYNC_KEY) || 'null'); return c && c.repo && c.token ? c : null; } catch (e) { return null; } }
+function saveCfg(c) {
+  try { if (c) localStorage.setItem(SYNC_KEY, JSON.stringify(c)); else { localStorage.removeItem(SYNC_KEY); localStorage.removeItem(BASE_KEY); } } catch (e) {}
+}
+function loadBase() { try { return JSON.parse(localStorage.getItem(BASE_KEY) || '{}'); } catch (e) { return {}; } }
+function saveBase(b) { try { localStorage.setItem(BASE_KEY, JSON.stringify(b)); } catch (e) {} }
+
+const b64enc = s => { const b = new TextEncoder().encode(s); let bin = ''; for (let i = 0; i < b.length; i += 0x8000) bin += String.fromCharCode.apply(null, b.subarray(i, i + 0x8000)); return btoa(bin); };
+const b64dec = s => { const bin = atob(String(s).replace(/\s/g, '')); const u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); return new TextDecoder().decode(u); };
+
+function ghFetch(path, opt = {}) {
+  return fetch('https://api.github.com' + path, {
+    ...opt, cache: 'no-store',
+    headers: { Authorization: 'Bearer ' + Sync.cfg.token, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28', ...(opt.body ? { 'Content-Type': 'application/json' } : {}) }
+  });
+}
+const filePath = () => `/repos/${Sync.cfg.repo}/contents/${Sync.cfg.path.split('/').map(encodeURIComponent).join('/')}`;
+async function fetchRemote() {
+  const q = Sync.cfg.branch ? '?ref=' + encodeURIComponent(Sync.cfg.branch) : '';
+  const r = await ghFetch(filePath() + q);
+  if (r.status === 404) return { data: null, sha: null };
+  if (r.status === 401) throw new Error('GitHub rejected the token. It may have expired.');
+  if (r.status === 403) throw new Error('GitHub refused the request (token permissions or rate limit).');
+  if (!r.ok) throw new Error('GitHub error ' + r.status);
+  const j = await r.json();
+  if (j.content === undefined || (!j.content && j.size)) throw new Error('The data file is too large to sync.');
+  return { data: JSON.parse(b64dec(j.content)), sha: j.sha };
+}
+async function putRemote(payload, sha) {
+  const body = { message: 'Fieldbook sync', content: b64enc(JSON.stringify(payload)) };
+  if (sha) body.sha = sha;
+  if (Sync.cfg.branch) body.branch = Sync.cfg.branch;
+  const r = await ghFetch(filePath(), { method: 'PUT', body: JSON.stringify(body) });
+  if (r.status === 409 || r.status === 422) { const e = new Error('conflict'); e.conflict = true; throw e; }
+  if (r.status === 401) throw new Error('GitHub rejected the token. It may have expired.');
+  if (r.status === 403 || r.status === 404) throw new Error('The token cannot write to this repository. Give it Contents: Read and write.');
+  if (!r.ok) throw new Error('GitHub error ' + r.status);
+}
+
+const canonOf = { p: x => JSON.stringify(cleanProject(x)), n: x => JSON.stringify(cleanNote(x)), f: x => JSON.stringify(x) };
+const stamp = { p: x => x.updatedAt || 0, n: x => x.updatedAt || 0, f: x => x.at || 0 };
+function mergeKind(kind, local, remote, base) {
+  const out = {}, canon = canonOf[kind], ts = stamp[kind];
+  for (const id of new Set([...Object.keys(local), ...Object.keys(remote), ...Object.keys(base)])) {
+    const l = local[id], r = remote[id], b = base[id];
+    const lj = l && canon(l), rj = r && canon(r);
+    if (l && r) {
+      if (lj === rj) out[id] = l;
+      else if (lj === b) out[id] = r;
+      else if (rj === b) out[id] = l;
+      else out[id] = ts(l) > ts(r) ? l : r;
+    } else if (l) { if (b === undefined || lj !== b) out[id] = l; }
+    else if (r) { if (b === undefined || rj !== b) out[id] = r; }
+  }
+  return out;
+}
+const focusMap = () => Object.fromEntries(S.meta.focus.map(f => [f.s, f]));
+function remoteMaps(d) {
+  const m = { p: {}, n: {}, f: {} };
+  if (!d) return m;
+  (d.projects || []).forEach(x => { const c = cleanProject(x); if (c) m.p[c.id] = c; });
+  (d.notes || []).forEach(x => { const c = cleanNote(x); if (c) m.n[c.id] = c; });
+  cleanMeta({ focus: d.focus }).focus.forEach(f => { m.f[f.s] = f; });
+  return m;
+}
+const canonMap = (kind, map) => Object.fromEntries(Object.entries(map).map(([k, v]) => [k, canonOf[kind](v)]));
+const sameCanon = (a, b) => { const ka = Object.keys(a), kb = Object.keys(b); return ka.length === kb.length && ka.every(k => a[k] === b[k]); };
+const editingNow = () => { const a = document.activeElement; return a && $('#view') && $('#view').contains(a) && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) && a.id !== 'cap'; };
+
+function setSync(state, msg = '') { Sync.state = state; Sync.msg = msg; if (state === 'ok') Sync.last = Date.now(); setStatus(Store.status === 'error' ? 'error' : 'saved'); }
+function scheduleSync(delay = 2500) { clearTimeout(Sync.timer); Sync.timer = setTimeout(syncNow, delay); }
+
+async function syncNow() {
+  if (!Sync.cfg) return;
+  if (Sync.busy) { Sync.again = true; return; }
+  if (editingNow()) { scheduleSync(4000); return; }
+  if (navigator.onLine === false) { setSync('error', 'You are offline. Changes are kept on this device.'); return; }
+  Sync.busy = true; setSync('syncing');
+  try {
+    let done = false;
+    for (let attempt = 0; attempt < 3 && !done; attempt++) {
+      const rem = await fetchRemote();
+      const R = remoteMaps(rem.data), base = loadBase();
+      const L = { p: S.projects, n: S.notes, f: focusMap() };
+      const M = {
+        p: mergeKind('p', L.p, R.p, base.p || {}), n: mergeKind('n', L.n, R.n, base.n || {}), f: mergeKind('f', L.f, R.f, base.f || {})
+      };
+      const cm = { p: canonMap('p', M.p), n: canonMap('n', M.n), f: canonMap('f', M.f) };
+      const localChanged = !sameCanon(cm.p, canonMap('p', L.p)) || !sameCanon(cm.n, canonMap('n', L.n)) || !sameCanon(cm.f, canonMap('f', L.f));
+      const remoteChanged = !rem.data || !sameCanon(cm.p, canonMap('p', R.p)) || !sameCanon(cm.n, canonMap('n', R.n)) || !sameCanon(cm.f, canonMap('f', R.f));
+      if (localChanged) {
+        if (editingNow()) { setSync('idle'); scheduleSync(4000); return; }
+        S.projects = M.p; S.notes = M.n; S.meta.focus = Object.values(M.f);
+        Object.values(S.projects).forEach(normalize); pruneFocus();
+        UNDO.stack = []; UNDO.redo = [];
+        lsWrite(); renderFn();
+      }
+      if (remoteChanged) {
+        const payload = { app: 'fieldbook', version: 1, updatedAt: new Date().toISOString(), projects: Object.values(M.p), notes: Object.values(M.n), focus: Object.values(M.f) };
+        try { await putRemote(payload, rem.sha); } catch (e) { if (e.conflict) continue; throw e; }
+      }
+      saveBase(cm); done = true;
+    }
+    if (!done) throw new Error('Sync conflict. It will retry shortly.');
+    setSync('ok');
+  } catch (e) {
+    setSync('error', e && e.message ? e.message : 'Sync failed');
+    if (/conflict/i.test(Sync.msg)) scheduleSync(8000);
+  } finally {
+    Sync.busy = false;
+    if (Sync.again) { Sync.again = false; scheduleSync(1500); }
+  }
+}
+
+function parseRepo(v) {
+  const m = /^(?:https?:\/\/github\.com\/)?([\w.-]+)\/([\w.-]+?)(?:\.git)?\/?$/i.exec(String(v || '').trim());
+  return m ? m[1] + '/' + m[2] : '';
+}
+async function connectSync(cfg) {
+  Sync.cfg = cfg;
+  try {
+    const r = await ghFetch('/repos/' + cfg.repo);
+    if (r.status === 404) throw new Error('Repository not found, or the token has no access to it.');
+    if (r.status === 401) throw new Error('GitHub rejected the token.');
+    if (!r.ok) throw new Error('GitHub error ' + r.status);
+    const j = await r.json();
+    if (!j.private) throw new Error('That repository is public, so anyone could read your data. Use a private repository.');
+    if (j.permissions && !j.permissions.push) throw new Error('The token cannot write to this repository. Give it Contents: Read and write.');
+  } catch (e) { Sync.cfg = null; throw e; }
+  saveCfg(cfg); saveBase({});
+  Sync.state = 'idle';
+  await syncNow();
+  if (Sync.state === 'error') { const m = Sync.msg; Sync.cfg = null; saveCfg(null); setSync('idle'); throw new Error(m); }
+}
+const linkCode = () => 'fbk1.' + b64enc(JSON.stringify({ repo: Sync.cfg.repo, token: Sync.cfg.token, path: Sync.cfg.path, branch: Sync.cfg.branch || '' }));
+function decodeLink(code) {
+  try {
+    const c = JSON.parse(b64dec(String(code).trim().replace(/^fbk1\./, '')));
+    if (c && parseRepo(c.repo) && typeof c.token === 'string' && c.token.length > 10) return { repo: parseRepo(c.repo), token: c.token, path: c.path || 'fieldbook-data.json', branch: c.branch || '' };
+  } catch (e) {}
+  return null;
+}
+
+function syncModal() {
+  if (!syncAvailable()) {
+    openModal(`<h2>Sync is on</h2><p>This copy keeps your data in your Claude account. Open the same page, signed in to Claude, on any other device and everything is there.</p><div class="actions"><button class="btn primary" data-act="close-modal">OK</button></div>`, '', 'sync');
+    return;
+  }
+  if (Sync.cfg) {
+    openModal(`<h2>Sync across devices</h2><p>Connected to <b>${esc(Sync.cfg.repo)}</b>. ${Sync.state === 'ok' ? 'Last synced ' + esc(ago(Sync.last)) + '.' : Sync.state === 'error' ? '' : 'Waiting for the first sync.'}</p>
+      ${Sync.state === 'error' ? `<p class="form-err" style="margin-top:8px">${esc(Sync.msg)}</p>` : ''}
+      <p class="hint" style="margin-top:12px">To link another device, open Settings → Sync across devices there and paste the link code. The code contains your token, so treat it like a password.</p>
+      <div class="actions"><button class="btn danger sp" data-act="sync-disconnect">Disconnect this device</button><button class="btn" data-act="sync-copy">Copy link code</button><button class="btn primary" data-act="sync-now">Sync now</button></div>`, '', 'sync');
+    return;
+  }
+  openModal(`<h2>Sync across devices</h2><p>Keeps projects and notes identical on your computer, iPad and phone by saving them to a private GitHub repository that only you can read.</p>
+    <ol class="steps-help"><li>Create a new <b>private</b> repository on GitHub, for example <b>fieldbook-data</b>.</li>
+    <li>Create a <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener noreferrer">fine-grained token</a>. Under Repository access choose <b>Only select repositories</b> and pick that one. Under Permissions set <b>Contents</b> to <b>Read and write</b>.</li>
+    <li>Paste both below. On your other devices, use the link code from this one.</li></ol>
+    <form class="form" data-form="sync-connect" autocomplete="off">
+      <div><label class="lab" for="sy-repo">Repository</label><input class="field" id="sy-repo" placeholder="your-name/fieldbook-data" data-first></div>
+      <div><label class="lab" for="sy-token">Token</label><input class="field" id="sy-token" type="password" placeholder="github_pat_…" autocomplete="off"></div>
+      <div class="form-err" id="sy-err" role="alert"></div>
+      <div class="actions" style="margin-top:0"><button type="button" class="btn quiet" data-act="close-modal">Cancel</button><button class="btn primary" type="submit" id="sy-go">Connect</button></div>
+    </form><hr>
+    <form class="form" data-form="sync-code" autocomplete="off"><div><label class="lab" for="sy-code">Already linked another device? Paste its link code</label><input class="field" id="sy-code" placeholder="fbk1.…"></div>
+      <div class="form-err" id="sy-err2" role="alert"></div><div class="actions" style="margin-top:0"><button class="btn" type="submit" id="sy-go2">Use link code</button></div></form>`, 'wide', 'sync');
+}
+async function runConnect(cfg, errId, btnId) {
+  const err = $('#' + errId), btn = $('#' + btnId);
+  err.textContent = ''; btn.disabled = true; const t = btn.textContent; btn.textContent = 'Connecting…';
+  try { await connectSync(cfg); closeModal(); toast('Sync is on. Your data now follows you across devices.'); }
+  catch (e) { err.textContent = e && e.message ? e.message : 'Could not connect.'; btn.disabled = false; btn.textContent = t; }
+}
+document.addEventListener('submit', e => {
+  const f = e.target.closest && e.target.closest('[data-form]'); if (!f) return;
+  if (f.dataset.form === 'sync-connect') {
+    e.preventDefault();
+    const repo = parseRepo($('#sy-repo').value), token = $('#sy-token').value.trim();
+    if (!repo) { $('#sy-err').textContent = 'Enter the repository as your-name/repository-name.'; return; }
+    if (token.length < 10) { $('#sy-err').textContent = 'Paste the token you created.'; return; }
+    runConnect({ repo, token, path: 'fieldbook-data.json', branch: '' }, 'sy-err', 'sy-go');
+  } else if (f.dataset.form === 'sync-code') {
+    e.preventDefault();
+    const cfg = decodeLink($('#sy-code').value);
+    if (!cfg) { $('#sy-err2').textContent = 'That link code is not valid.'; return; }
+    runConnect(cfg, 'sy-err2', 'sy-go2');
+  }
+});
+A['sync-open'] = () => { closePop(); syncModal(); };
+A['sync-now'] = () => { closeModal(); toast('Syncing…', { ms: 1500 }); syncNow(); };
+A['sync-copy'] = () => {
+  const code = linkCode();
+  const done = () => toast('Link code copied. Paste it on your other device.');
+  const fallback = () => openModal(`<h2>Link code</h2><p>Copy this and paste it on your other device.</p><textarea class="field code-box" id="exp-box" readonly style="margin-top:12px;height:110px">${esc(code)}</textarea><div class="actions"><button class="btn primary" data-act="close-modal">Close</button></div>`, '', 'code');
+  try { navigator.clipboard.writeText(code).then(done, fallback); } catch (e) { fallback(); }
+};
+A['sync-disconnect'] = async () => {
+  closeModal();
+  const ok = await confirmBox({ title: 'Disconnect this device?', body: 'Your data stays on this device and in the repository. This device will stop syncing until you connect it again.', ok: 'Disconnect', danger: false });
+  if (!ok) return; closeModal();
+  Sync.cfg = null; saveCfg(null); setSync('idle'); toast('Sync turned off on this device.');
+};
+function initSync() {
+  if (!syncAvailable()) return;
+  Sync.cfg = loadCfg();
+  if (!Sync.cfg) return;
+  setSync('idle'); syncNow();
+  setInterval(() => { if (Sync.cfg && document.visibilityState === 'visible') syncNow(); }, 60000);
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && Sync.cfg) syncNow(); });
+  window.addEventListener('online', () => { if (Sync.cfg) syncNow(); });
+  window.addEventListener('focusout', () => { if (Sync.cfg && Sync.again) scheduleSync(1000); });
+}
+
 })();
 </script>
-
 </body></html>
