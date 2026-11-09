@@ -548,7 +548,7 @@ button.chip:hover { border-color: var(--fg-3); color: var(--fg); }
 .wk-t b { font-weight: 500; color: var(--fg); }
 .wk-live { font-style: normal; color: var(--accent); margin-right: 6px; }
 input.goal {
-  width: 3.7em; text-align: center; font-family: var(--f-mono); font-size: 12.5px; color: var(--fg); background: var(--surface-2);
+  width: 5.6em; text-align: center; font-family: var(--f-mono); font-size: 12.5px; color: var(--fg); background: var(--surface-2);
   border: 1px solid var(--line); border-radius: 5px; padding: 2px 4px; appearance: textfield; -moz-appearance: textfield;
 }
 input.goal::-webkit-inner-spin-button, input.goal::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
@@ -647,6 +647,14 @@ input.goal:focus { outline: none; border-color: var(--accent); }
 .bulk { margin: 8px 0 0 26px; padding: 12px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--surface); display: grid; gap: 8px; }
 .bulk textarea { font-family: var(--f-ui); line-height: 1.6; min-height: 140px; }
 .bulk-foot { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+.tb-plan { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 13px; padding-top: 4px; }
+.tb-plan .days { display: inline-flex; gap: 4px; }
+.dbtn { width: 28px; height: 28px; border-radius: 50%; border: 1px solid var(--line-strong); color: var(--fg-3); font-size: 12px; font-family: var(--f-mono); }
+.dbtn:hover { color: var(--fg); }
+.dbtn.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.tb-plan input.goal[type="time"] { width: auto; padding: 3px 6px; }
+.wk-plan { display: inline-flex; align-items: center; gap: 5px; font-family: var(--f-mono); font-size: 11.5px; color: var(--fg-3); }
 
 </style>
 </head><body>
@@ -820,6 +828,10 @@ function cleanLog(v) {
   }
   return out.sort((a, b) => a.t - b.t).slice(-3000);
 }
+function cleanPlan(v) {
+  const days = v && Array.isArray(v.days) ? [...new Set(v.days.map(Number).filter(d => Number.isInteger(d) && d >= 0 && d <= 6))].sort() : [];
+  return { days, time: v && typeof v.time === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(v.time) ? v.time : '' };
+}
 function cleanProject(x) {
   if (!x || typeof x !== 'object' || !okId(x.id)) return null;
   const seen = new Set();
@@ -830,8 +842,8 @@ function cleanProject(x) {
     status: st, archivedFrom: ['active', 'paused', 'completed'].includes(x.archivedFrom) ? x.archivedFrom : '',
     createdAt: +x.createdAt || Date.now(), updatedAt: +x.updatedAt || Date.now(), completedAt: +x.completedAt || 0,
     hideDone: !!x.hideDone,
-    goal: Math.round(Math.min(168, Math.max(0, +x.goal || 0)) * 4) / 4,
-    log: cleanLog(x.log),
+    goal: Math.round(Math.min(168, Math.max(0, +x.goal || 0)) * 60) / 60,
+    log: cleanLog(x.log), plan: cleanPlan(x.plan),
     steps: (Array.isArray(x.steps) ? x.steps : []).slice(0, 1000).map(s => cleanStep(s, 0, seen)).filter(Boolean)
   };
 }
@@ -891,6 +903,7 @@ function normalize(p) {
   f(p.steps);
   if (!Array.isArray(p.log)) p.log = [];
   if (typeof p.goal !== 'number') p.goal = 0;
+  if (!p.plan || !Array.isArray(p.plan.days)) p.plan = { days: [], time: '' };
 }
 function nextStep(p) { let r = null; walk(p.steps, s => { if (!r && !s.children.length && !s.done) r = s; }); return r; }
 function setDone(s, val) { s.done = val; s.doneAt = val ? Date.now() : 0; s.children.forEach(c => setDone(c, val)); }
@@ -962,7 +975,18 @@ function fmtDur(sec) {
   return h ? h + 'h ' + pad(m % 60) + 'm' : m + 'm';
 }
 function fmtClock(sec) { return pad(Math.floor(sec / 3600)) + ':' + pad(Math.floor(sec / 60) % 60) + ':' + pad(sec % 60); }
-const fmtH = h => (Math.round(h * 4) / 4).toString().replace(/\.0+$/, '');
+const goalDur = h => fmtDur(Math.round(h * 3600));
+/* accepts 6, 1.5, 1:30, 45m, 1h 30m, 2ч 15м; returns hours or NaN */
+function parseGoal(str) {
+  const s = String(str).toLowerCase().replace(',', '.').trim();
+  if (!s) return 0;
+  let m;
+  if ((m = s.match(/^(\d+):(\d{1,2})$/))) return +m[1] + +m[2] / 60;
+  if ((m = s.match(/^\d+(?:\.\d+)?$/))) return +s;
+  m = s.match(/^(?:(\d+(?:\.\d+)?)\s*(?:h|hr|hrs|hours?|ч))?\s*(?:(\d+)\s*(?:m|min|mins|minutes?|м))?$/);
+  if (m && (m[1] || m[2])) return (+m[1] || 0) + (+m[2] || 0) / 60;
+  return NaN;
+}
 function addLog(p, t0, t1) {
   let a = t0;
   while (a < t1) {
@@ -1151,12 +1175,12 @@ function dueItems() {
 const byDate = (a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : (a.kind === b.kind ? 0 : a.kind === 'project' ? -1 : 1);
 
 /* ===================== weekly time ===================== */
-const goalInput = p => `<input class="goal" type="number" inputmode="decimal" min="0" max="168" step="0.5" data-field="proj-goal" data-pid="${p.id}" value="${p.goal || ''}" placeholder="0" aria-label="Weekly hours goal for ${esc(p.name)}">`;
+const goalInput = p => `<input class="goal" type="text" data-field="proj-goal" data-pid="${p.id}" value="${p.goal ? goalDur(p.goal) : ''}" placeholder="0h" title="Weekly goal. Examples: 6, 1:30, 45m, 1h 30m" aria-label="Weekly goal for ${esc(p.name)}">`;
 const wkPct = (p, secs) => p.goal ? Math.min(100, Math.floor(secs / (p.goal * 36))) : 0;
 function wkText(p, secs) {
   if (!p.goal) return fmtDur(secs) + ' so far';
   const left = p.goal * 3600 - secs;
-  return fmtDur(secs) + ' of ' + fmtH(p.goal) + 'h · ' + (left > 0 ? fmtDur(left) + ' to go' : left < -59 ? fmtDur(-left) + ' over' : 'goal reached');
+  return fmtDur(secs) + ' of ' + goalDur(p.goal) + ' · ' + (left > 0 ? fmtDur(left) + ' to go' : left < -59 ? fmtDur(-left) + ' over' : 'goal reached');
 }
 function weekLabel() {
   const a = new Date(weekStart(Date.now())), b = new Date(a); b.setDate(b.getDate() + 6);
@@ -1168,16 +1192,17 @@ function wkRow(p) {
     <button class="wk-play ${run ? 'on' : ''}" data-act="tm-toggle" data-pid="${p.id}" aria-label="${run ? 'Stop timer: ' : 'Start timer: '}${esc(p.name)}" title="${run ? 'Stop' : 'Start working'}">${ico(run ? 'stop' : 'play', 13)}</button>
     <div class="wk-main">
       <div class="wk-top"><button class="wk-name" data-act="go" data-to="project-${p.id}">${esc(p.name)}</button>
-        <span class="wk-t">${run ? '<i class="wk-live" data-tm="clock">' + fmtClock(liveSecs(p.id)) + '</i>' : ''}<b data-tx>${fmtDur(secs)}</b><span class="faint">/</span>${goalInput(p)}<span class="faint">h</span></span></div>
+        <span class="wk-t">${run ? '<i class="wk-live" data-tm="clock">' + fmtClock(liveSecs(p.id)) + '</i>' : ''}<b data-tx>${fmtDur(secs)}</b><span class="faint">/</span>${goalInput(p)}</span></div>
       ${bar('w' + p.id, wkPct(p, secs))}
+      ${planLabel(p) ? `<div class="wk-plan">${ico('clock', 11)} ${planLabel(p)}</div>` : ''}
     </div></div>`;
 }
 function weekSection(active) {
   if (!active.length) return '';
   const tot = active.reduce((n, p) => n + weekSecs(p), 0), gt = active.reduce((n, p) => n + (p.goal || 0), 0);
-  return `<section class="wk"><div class="sec-title">This week <span class="n">${weekLabel()}</span><span class="sp wk-sum"><b data-tx-total>${fmtDur(tot)}</b>${gt ? ' / ' + fmtH(gt) + 'h' : ''}</span></div>
+  return `<section class="wk"><div class="sec-title">This week <span class="n">${weekLabel()}</span><span class="sp wk-sum"><b data-tx-total>${fmtDur(tot)}</b>${gt ? ' / ' + goalDur(gt) : ''}</span></div>
     <div class="wk-list">${active.map(wkRow).join('')}</div>
-    ${gt ? '' : `<p class="hint" style="margin-top:8px">Type your weekly hours next to each project, then press ${ico('play', 11)} when you sit down to work. The bars start over every Monday.</p>`}</section>`;
+    ${gt ? '' : `<p class="hint" style="margin-top:8px">Type a weekly goal next to each project (6, 1:30 or 45m), then press ${ico('play', 11)} when you sit down to work. The bars start over every Monday.</p>`}</section>`;
 }
 
 /* ===================== home ===================== */
@@ -1359,16 +1384,40 @@ function stepRow(p, s, depth, q) {
     </div>
     ${open ? stepDetail(p, s, depth) : ''}${kidHtml}</div>`;
 }
+function nextPlan(p) {
+  if (!p.plan.days.length || !p.plan.time) return null;
+  const [h, m] = p.plan.time.split(':').map(Number), now = new Date();
+  for (let i = 0; i < 8; i++) {
+    const d = new Date(now); d.setDate(d.getDate() + i); d.setHours(h, m, 0, 0);
+    if (p.plan.days.includes((d.getDay() + 6) % 7) && d > now) return d;
+  }
+  return null;
+}
+function planLabel(p) {
+  const d = nextPlan(p); if (!d) return '';
+  const n = diff(ds(d), today());
+  return (n === 0 ? 'Today' : n === 1 ? 'Tomorrow' : DOW[d.getDay()]) + ' ' + p.plan.time;
+}
+const PDAYS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+function planBlock(p) {
+  const nf = typeof Notification === 'undefined' ? 'none' : Notification.permission;
+  return `<div class="tb-plan"><span class="faint">Plan</span>
+    <span class="days">${PDAYS.map((l, i) => `<button class="dbtn ${p.plan.days.includes(i) ? 'on' : ''}" data-act="plan-day" data-pid="${p.id}" data-d="${i}" aria-pressed="${p.plan.days.includes(i)}" aria-label="${DOWL[(i + 1) % 7]}">${l}</button>`).join('')}</span>
+    <input class="goal" type="time" data-field="proj-plan-time" value="${p.plan.time}" aria-label="Planned start time">
+    ${p.plan.days.length ? `<span class="faint">${planLabel(p) ? 'Next: ' + planLabel(p) : ''}</span>` : ''}</div>
+    ${p.plan.days.length && p.plan.time ? `<div class="tb-actions"><button class="btn sm" data-act="plan-ics" data-pid="${p.id}">${ico('cal', 14)} Add to Calendar</button><span class="hint">Phone reminders even when the app is closed.</span></div>` : ''}
+    ${p.plan.days.length ? (nf === 'default' ? `<div class="tb-actions"><button class="btn sm" data-act="notif-enable">Enable notifications</button><span class="hint">Reminders show while Fieldbook is open.</span></div>` : nf === 'denied' ? '<p class="hint">Browser notifications are blocked. Reminders still appear inside the app.</p>' : '<p class="hint">Reminders show while Fieldbook is open.</p>') : ''}`;
+}
 function timeBlock(p) {
   const secs = weekSecs(p), run = TM.p === p.id;
   return `<section class="tblock ${run ? 'run' : ''}" data-wk="${p.id}" aria-label="Time this week">
-    <div class="tb-head"><span class="tb-title">${ico('clock', 14)} Time this week</span><span class="tb-goal"><span class="faint">Goal</span>${goalInput(p)}<span class="faint">h / week</span></span></div>
+    <div class="tb-head"><span class="tb-title">${ico('clock', 14)} Time this week</span><span class="tb-goal"><span class="faint">Goal</span>${goalInput(p)}<span class="faint">per week</span></span></div>
     ${bar('t' + p.id, wkPct(p, secs), 'lg')}
     <div class="tb-line"><span data-tx>${wkText(p, secs)}</span></div>
     <div class="tb-actions">
       <button class="btn ${run ? 'stopbtn' : 'primary'}" data-act="tm-toggle" data-pid="${p.id}">${ico(run ? 'stop' : 'play', 13)} ${run ? 'Stop <span class="mono" data-tm="clock">' + fmtClock(liveSecs(p.id)) + '</span>' : 'Start tasks'}</button>
       <button class="btn quiet" data-act="tm-add" data-pid="${p.id}">${ico('plus', 14)} Log time</button>
-    </div></section>`;
+    </div>${planBlock(p)}</section>`;
 }
 function viewProject(id) {
   const p = S.projects[id];
@@ -1559,7 +1608,7 @@ function newProject(f = {}) {
   const t = Date.now();
   return { id: mkid('p'), name: (f.name || '').trim().slice(0, 200) || 'Untitled project', desc: (f.desc || '').slice(0, 4000), deadline: dstr(f.deadline || ''),
     priority: ['high', 'med', 'low'].includes(f.priority) ? f.priority : '', tag: normTag(f.tag || ''), status: 'active', archivedFrom: '',
-    createdAt: t, updatedAt: t, completedAt: 0, hideDone: false, goal: 0, log: [], steps: [] };
+    createdAt: t, updatedAt: t, completedAt: 0, hideDone: false, goal: 0, log: [], plan: { days: [], time: '' }, steps: [] };
 }
 const firstLine = text => {
   const lines = String(text || '').trim().split('\n');
@@ -2058,6 +2107,8 @@ function tmTick() {
   });
   const tt = $('[data-tx-total]');
   if (tt) tt.textContent = fmtDur(projectsBy('active').reduce((n, p) => n + weekSecs(p, undefined, now), 0));
+  const tp = S.projects[TM.p];
+  if (tp && tp.goal && weekSecs(tp, undefined, now) >= tp.goal * 3600 && nfOnce('goal:' + tp.id + ':' + weekStart(now))) notify('Weekly goal reached', tp.name + ': ' + goalDur(tp.goal), tp.id, false);
   const c = fmtClock(liveSecs(TM.p, now));
   $$('[data-tm="clock"]').forEach(e => { e.textContent = c; });
 }
@@ -2068,6 +2119,39 @@ function renderTimer() {
   el.innerHTML = `<i class="dot"></i><button class="tp-name" data-act="go" data-to="project-${p.id}" title="Open project">${esc(p.name)}</button><span class="tp-clock" data-tm="clock">${fmtClock(liveSecs(p.id))}</span><button class="tp-stop" data-act="tm-toggle" data-pid="${p.id}" aria-label="Stop timer">${ico('stop', 12)}</button>`;
   el.hidden = false;
 }
+const NF_KEY = 'fieldbook.notified@' + NS;
+function nfOnce(key) {
+  let a = []; try { a = JSON.parse(localStorage.getItem(NF_KEY) || '[]'); } catch (e) {}
+  if (a.includes(key)) return false;
+  a.push(key); try { localStorage.setItem(NF_KEY, JSON.stringify(a.slice(-200))); } catch (e) {}
+  return true;
+}
+function notify(title, body, pid, startable) {
+  try { if ('Notification' in window && Notification.permission === 'granted') { const n = new Notification(title, { body, tag: 'fb-' + pid }); n.onclick = () => { window.focus(); go('project-' + pid); n.close(); }; } } catch (e) {}
+  toast(title + (body ? '. ' + body : ''), { ms: 20000, action: startable ? { label: 'Start', fn: () => tmStart(pid) } : { label: 'Open', fn: () => go('project-' + pid) } });
+}
+function planTick() {
+  if (!UI.booted) return;
+  const now = new Date(), idx = (now.getDay() + 6) % 7, day = ds(now);
+  for (const p of projectsBy('active')) {
+    if (!p.plan.time || !p.plan.days.includes(idx) || TM.p === p.id) continue;
+    const [h, m] = p.plan.time.split(':').map(Number), at = new Date(now); at.setHours(h, m, 0, 0);
+    const late = now - at; if (late < 0 || late > 15 * 60e3) continue;
+    if (nfOnce(p.id + ':' + day)) notify('Time to work on ' + p.name, p.plan.time + (p.goal ? ' · goal ' + goalDur(p.goal) + ' this week' : ''), p.id, true);
+  }
+}
+function planIcs(p) {
+  const first = nextPlan(p); if (!first) return '';
+  const z = n => String(n).padStart(2, '0'), loc = d => d.getFullYear() + z(d.getMonth() + 1) + z(d.getDate()) + 'T' + z(d.getHours()) + z(d.getMinutes()) + '00';
+  const esc = s => String(s).replace(/\\/g, '\\\\').replace(/[;,]/g, m => '\\' + m).replace(/\n/g, '\\n');
+  const mins = p.goal ? Math.min(240, Math.max(30, Math.round(p.goal * 60 / p.plan.days.length / 15) * 15)) : 60;
+  const by = p.plan.days.map(d => ['MO', 'TU', 'WE', 'TH', 'FR', 'SA', 'SU'][d]).join(',');
+  const note = 'Fieldbook: ' + p.name + (p.goal ? ' (goal ' + goalDur(p.goal) + ' per week)' : '');
+  return ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Fieldbook//EN', 'CALSCALE:GREGORIAN', 'BEGIN:VEVENT',
+    'UID:' + p.id + '@fieldbook', 'DTSTAMP:' + new Date().toISOString().replace(/[-:]|\.\d+/g, ''), 'DTSTART:' + loc(first), 'DURATION:PT' + mins + 'M',
+    'RRULE:FREQ=WEEKLY;BYDAY=' + by, 'SUMMARY:' + esc(p.name), 'DESCRIPTION:' + esc(note),
+    'BEGIN:VALARM', 'TRIGGER:-PT5M', 'ACTION:DISPLAY', 'DESCRIPTION:' + esc('Time to work on ' + p.name), 'END:VALARM', 'END:VEVENT', 'END:VCALENDAR'].join('\r\n') + '\r\n';
+}
 function logManual(p, secs) {
   const now = Date.now();
   if (commit(() => { addLog(p, now - secs * 1000, now); touch(p); })) toast('Added ' + fmtDur(secs) + ' to ' + p.name, { undo: true });
@@ -2076,6 +2160,18 @@ function logManual(p, secs) {
 const A = {
   go: el => go(el.dataset.to),
   'tm-toggle': el => { const pid = el.dataset.pid; TM.p === pid ? tmStop() : tmStart(pid); },
+  'plan-day': el => {
+    const p = S.projects[el.dataset.pid], d = +el.dataset.d; if (!p) return;
+    commit(() => { const s = new Set(p.plan.days); s.has(d) ? s.delete(d) : s.add(d); p.plan.days = [...s].sort(); if (!p.plan.time) p.plan.time = '18:00'; touch(p); });
+  },
+  'plan-ics': el => {
+    const p = S.projects[el.dataset.pid]; const ics = p && planIcs(p); if (!ics) return;
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([ics], { type: 'text/calendar' }));
+    a.download = (p.name.replace(/[^\w-]+/g, '-').replace(/^-+|-+$/g, '') || 'fieldbook') + '.ics';
+    document.body.appendChild(a); a.click(); setTimeout(() => { a.remove(); URL.revokeObjectURL(a.href); }, 4000);
+    toast('Open the file to add it to Calendar. Re-add it if you change the plan.', { ms: 6000 });
+  },
+  'notif-enable': () => { try { Notification.requestPermission().then(() => render()); } catch (e) { toast('This browser does not support notifications'); } },
   'tm-add': el => {
     const p = S.projects[el.dataset.pid]; if (!p) return;
     openPop(el, [{ head: 'Add time you already worked' }, ...[[15, '15 minutes'], [30, '30 minutes'], [60, '1 hour'], [120, '2 hours']].map(([m, l]) => ({ label: '+ ' + l, icon: 'clock', fn: () => logManual(p, m * 60) }))]);
@@ -2238,10 +2334,15 @@ document.addEventListener('change', e => {
   if (t.id === 'psort') { UI.psort = t.value; render(); return; }
   if (!f) return;
   const p = S.projects[t.dataset.pid] || S.projects[UI.route.id];
+  if (f === 'proj-plan-time') {
+    if (p) commit(() => { p.plan.time = /^\d\d:\d\d$/.test(t.value) ? t.value : ''; touch(p); });
+    return;
+  }
   if (f === 'proj-goal') {
     if (!p) return;
-    const v = Math.round(Math.min(168, Math.max(0, parseFloat(String(t.value).replace(',', '.')) || 0)) * 4) / 4;
-    if (!commit(() => { p.goal = v; touch(p); })) t.value = p.goal || '';
+    const h = parseGoal(t.value), v = Math.round(Math.min(168, Math.max(0, h)) * 60) / 60;
+    if (isNaN(h) || !commit(() => { p.goal = v; touch(p); })) { t.value = p.goal ? goalDur(p.goal) : ''; if (isNaN(h)) toast('Try 6, 1:30 or 45m'); }
+    else render();
     return;
   }
   if (f === 'proj-name' && p) {
@@ -2498,6 +2599,7 @@ document.addEventListener('visibilitychange', () => {
 });
 setInterval(() => { if (UI.booted && UI.stamp && UI.stamp !== today()) { UI.stamp = today(); render(); } }, 60000);
 setInterval(tmTick, 1000);
+setInterval(planTick, 20000);
 window.addEventListener('storage', e => { if (e.key === TM_KEY && UI.booted) { tmLoad(); render(); } });
 if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => autosizeAll());
 
@@ -2513,6 +2615,7 @@ if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => auto
   UI.booted = true; UI.stamp = today(); UI.animate = true;
   setStatus('saved'); render();
   if (typeof initSync === 'function') initSync();
+  planTick();
   if (legacy === 'ask') legacyPrompt();
   if (window.__FB_TEST) window.__fieldbook = { S, UI, Store, commit, go, undo, redo, toast, TM, tmSave, weekStart, addLog, mergeKind, cleanProject };
 })();
